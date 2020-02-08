@@ -1,4 +1,4 @@
-module github.com/filecoin-project/go-cid-commitment
+module github.com/filecoin-project/go-fil-commcid
 
 go 1.13
 
