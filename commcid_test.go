@@ -17,7 +17,8 @@ func TestDataCommitmentToCID(t *testing.T) {
 	_, err := rand.Read(randBytes)
 	require.NoError(t, err)
 
-	c := commcid.DataCommitmentV1ToCID(randBytes)
+	c, err := commcid.DataCommitmentV1ToCID(randBytes)
+	require.NoError(t, err)
 
 	require.Equal(t, c.Prefix().Codec, uint64(cid.Raw))
 	mh := c.Hash()
@@ -131,7 +132,8 @@ func TestPieceCommitmentToCID(t *testing.T) {
 	_, err := rand.Read(randBytes)
 	require.NoError(t, err)
 
-	c := commcid.PieceCommitmentV1ToCID(randBytes)
+	c, err := commcid.PieceCommitmentV1ToCID(randBytes)
+	require.NoError(t, err)
 
 	require.Equal(t, c.Prefix().Codec, uint64(cid.Raw))
 	mh := c.Hash()

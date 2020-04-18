@@ -2,6 +2,7 @@ package commcid
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
@@ -82,8 +83,12 @@ var (
 // - serialization type of raw
 // - the given filecoin hash type
 func CommitmentToCID(commitment []byte, code FilecoinMultihashCode) (cid.Cid, error) {
+	if len(commitment) != 32 {
+		return cid.Undef, fmt.Errorf("commitments must be 32 bytes long")
+	}
+
 	if !ValidFilecoinMultihash(code) {
-		return cid.Cid{}, ErrIncorrectHash
+		return cid.Undef, ErrIncorrectHash
 	}
 	mh := rawMultiHash(uint64(code), commitment)
 	return cid.NewCidV1(FilecoinCodecType, mh), nil
@@ -112,9 +117,8 @@ func CIDToCommitment(c cid.Cid) ([]byte, FilecoinMultihashCode, error) {
 // by adding:
 // - serialization type of raw
 // - hashing type of Filecoin unsealed hashing function v1 (0xfc2)
-func DataCommitmentV1ToCID(commD []byte) cid.Cid {
-	c, _ := CommitmentToCID(commD, FC_UNSEALED_V1)
-	return c
+func DataCommitmentV1ToCID(commD []byte) (cid.Cid, error) {
+	return CommitmentToCID(commD, FC_UNSEALED_V1)
 }
 
 // CIDToDataCommitmentV1 extracts the raw data commitment from a CID
@@ -157,7 +161,7 @@ func CIDToReplicaCommitmentV1(c cid.Cid) ([]byte, error) {
 // PieceCommitmentV1ToCID converts a commP to a CID
 // -- it is just a helper function that is equivalent to
 // DataCommitmentV1ToCID.
-func PieceCommitmentV1ToCID(commP []byte) cid.Cid {
+func PieceCommitmentV1ToCID(commP []byte) (cid.Cid, error) {
 	return DataCommitmentV1ToCID(commP)
 }
 
