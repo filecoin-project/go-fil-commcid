@@ -3,7 +3,7 @@ module github.com/filecoin-project/go-fil-commcid
 go 1.13
 
 require (
-	github.com/ipfs/go-cid v0.0.5
+	github.com/ipfs/go-cid v0.0.6
 	github.com/multiformats/go-multihash v0.0.13
 	github.com/multiformats/go-varint v0.0.5
 	github.com/stretchr/testify v1.4.0
