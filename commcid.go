@@ -13,58 +13,6 @@ import (
 type FilMultiCodec uint64
 type FilMultiHash uint64
 
-// https://github.com/multiformats/multicodec/blob/e4e8a0e81a/table.csv#L111
-const FC_SHA2_256_TRUNC254 FilMultiHash = 0x1012
-
-// https://github.com/multiformats/multicodec/blob/e4e8a0e81a/table.csv#L441-L442
-const (
-	// FC_UNSEALED_V1 is the v1 hashing algorithm used in
-	// constructing merkleproofs of unsealed data
-	FC_UNSEALED_V1 FilMultiCodec = 0xf101 + iota
-
-	// FC_SEALED_V1 is the v1 hashing algorithm used in
-	// constructing merkleproofs of sealed replicated data
-	FC_SEALED_V1
-
-	// FC_RESERVED3 is reserved for future use
-	FC_RESERVED3
-
-	// FC_RESERVED4 is reserved for future use
-	FC_RESERVED4
-
-	// FC_RESERVED5 is reserved for future use
-	FC_RESERVED5
-
-	// FC_RESERVED6 is reserved for future use
-	FC_RESERVED6
-
-	// FC_RESERVED7 is reserved for future use
-	FC_RESERVED7
-
-	// FC_RESERVED8 is reserved for future use
-	FC_RESERVED8
-
-	// FC_RESERVED9 is reserved for future use
-	FC_RESERVED9
-
-	// FC_RESERVED10 is reserved for future use
-	FC_RESERVED10
-)
-
-// FilecoinCodecNames maps filecoin codec ids to a text descriptions
-var FilecoinCodecNames = map[FilMultiCodec]string{
-	FC_UNSEALED_V1: "Filecoin Merkleproof Of Unsealed Data, V1",
-	FC_SEALED_V1:   "Filecoin Merkleproof Of Sealed Data, V1",
-	FC_RESERVED3:   "Reserved",
-	FC_RESERVED4:   "Reserved",
-	FC_RESERVED5:   "Reserved",
-	FC_RESERVED6:   "Reserved",
-	FC_RESERVED7:   "Reserved",
-	FC_RESERVED8:   "Reserved",
-	FC_RESERVED9:   "Reserved",
-	FC_RESERVED10:  "Reserved",
-}
-
 // FC_UNDEFINED is just a signifier for no codec determined
 const FC_UNDEFINED = FilMultiCodec(0)
 
@@ -84,11 +32,9 @@ var (
 func CommitmentToCID(commitment []byte, mc FilMultiCodec, mh FilMultiHash) (cid.Cid, error) {
 	if len(commitment) != 32 {
 		return cid.Undef, fmt.Errorf("commitments must be 32 bytes long")
-	}
-
-	if !ValidFilecoinMultihash(mh) {
+	} else if !ValidFilecoinMultihash(uint64(mh)) {
 		return cid.Undef, ErrIncorrectHash
-	} else if !ValidFilecoinCodec(mc) {
+	} else if !ValidFilecoinCodec(uint64(mc)) {
 		return cid.Undef, ErrIncorrectCodec
 	}
 
@@ -108,14 +54,14 @@ func CommitmentToCID(commitment []byte, mc FilMultiCodec, mh FilMultiHash) (cid.
 // assuming that it has the correct hashing function and
 // serialization types
 func CIDToCommitment(c cid.Cid) ([]byte, FilMultiCodec, error) {
-	if !ValidFilecoinCodec(FilMultiCodec(c.Type())) {
+	if !ValidFilecoinCodec(c.Type()) {
 		return nil, FC_UNDEFINED, ErrIncorrectCodec
 	}
 	decoded, err := multihash.Decode([]byte(c.Hash()))
 	if err != nil {
 		return nil, FC_UNDEFINED, xerrors.Errorf("Error decoding data commitment hash: %w", err)
 	}
-	if !ValidFilecoinMultihash(FilMultiHash(decoded.Code)) {
+	if !ValidFilecoinMultihash(decoded.Code) {
 		return nil, FC_UNDEFINED, ErrIncorrectHash
 	}
 	return decoded.Digest, FilMultiCodec(c.Type()), nil
@@ -126,7 +72,7 @@ func CIDToCommitment(c cid.Cid) ([]byte, FilMultiCodec, error) {
 // - codec of type FC_UNSEALED_V1
 // - hashing type of FC_SHA2_256_TRUNC254
 func DataCommitmentV1ToCID(commD []byte) (cid.Cid, error) {
-	return CommitmentToCID(commD, FC_UNSEALED_V1, FC_SHA2_256_TRUNC254)
+	return CommitmentToCID(commD, cid.FilCommitmentUnsealed, multihash.SHA2_256_TRUNC254_PADDED)
 }
 
 // CIDToDataCommitmentV1 extracts the raw data commitment from a CID
@@ -137,7 +83,7 @@ func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if hash != FC_UNSEALED_V1 {
+	if hash != cid.FilCommitmentUnsealed {
 		return nil, ErrIncorrectHash
 	}
 	return commD, nil
@@ -148,7 +94,7 @@ func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
 // - codec of type FC_SEALED_V1
 // - hashing type of FC_SHA2_256_TRUNC254
 func ReplicaCommitmentV1ToCID(commR []byte) cid.Cid {
-	c, _ := CommitmentToCID(commR, FC_SEALED_V1, FC_SHA2_256_TRUNC254)
+	c, _ := CommitmentToCID(commR, cid.FilCommitmentSealed, multihash.SHA2_256_TRUNC254_PADDED)
 	return c
 }
 
@@ -160,7 +106,7 @@ func CIDToReplicaCommitmentV1(c cid.Cid) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if hash != FC_SEALED_V1 {
+	if hash != cid.FilCommitmentSealed {
 		return nil, ErrIncorrectHash
 	}
 	return commR, nil
@@ -182,12 +128,12 @@ func CIDToPieceCommitmentV1(c cid.Cid) ([]byte, error) {
 
 // ValidFilecoinCodec returns true if the given multicodec type
 // is recognized as belonging to filecoin
-func ValidFilecoinCodec(mc FilMultiCodec) bool {
-	return mc == FC_UNSEALED_V1 || mc == FC_SEALED_V1
+func ValidFilecoinCodec(mc uint64) bool {
+	return mc == cid.FilCommitmentUnsealed || mc == cid.FilCommitmentSealed
 }
 
 // ValidFilecoinMultihash returns true if the given multihash type
 // is recognized as belonging to filecoin
-func ValidFilecoinMultihash(mh FilMultiHash) bool {
-	return mh == FC_SHA2_256_TRUNC254 // sha2-256-trunc2 is all we support for now
+func ValidFilecoinMultihash(mh uint64) bool {
+	return mh == multihash.SHA2_256_TRUNC254_PADDED // sha2-256-trunc2 is all we support for now
 }
