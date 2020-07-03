@@ -81,7 +81,7 @@ func TestReplicaCommitmentToCID(t *testing.T) {
 	mh := c.Hash()
 	decoded, err := multihash.Decode([]byte(mh))
 	require.NoError(t, err)
-	require.Equal(t, decoded.Code, uint64(multihash.SHA2_256_TRUNC254_PADDED))
+	require.Equal(t, decoded.Code, uint64(multihash.POSEIDON_BLS12_381_A1_FC1))
 	require.Equal(t, decoded.Length, len(randBytes))
 	require.True(t, bytes.Equal(decoded.Digest, randBytes))
 }
@@ -92,7 +92,7 @@ func TestCIDToReplicaCommitment(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("with correct hash format", func(t *testing.T) {
-		hash := testMultiHash(multihash.SHA2_256_TRUNC254_PADDED, randBytes, 0)
+		hash := testMultiHash(multihash.POSEIDON_BLS12_381_A1_FC1, randBytes, 0)
 
 		t.Run("decodes raw commitment hash when correct cid format", func(t *testing.T) {
 			c := cid.NewCidV1(cid.FilCommitmentSealed, hash)
@@ -110,7 +110,7 @@ func TestCIDToReplicaCommitment(t *testing.T) {
 	})
 
 	t.Run("error on incorrectly formatted hash", func(t *testing.T) {
-		hash := testMultiHash(cid.FilCommitmentSealed, randBytes, 5)
+		hash := testMultiHash(cid.FilCommitmentSealed, randBytes, 0)
 		c := cid.NewCidV1(cid.Raw, hash)
 		decoded, err := commcid.CIDToReplicaCommitmentV1(c)
 		require.Error(t, err)

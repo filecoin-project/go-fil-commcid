@@ -30,12 +30,8 @@ var (
 // - the given filecoin codec type
 // - the given filecoin hash type
 func CommitmentToCID(commitment []byte, mc FilMultiCodec, mh FilMultiHash) (cid.Cid, error) {
-	if len(commitment) != 32 {
-		return cid.Undef, fmt.Errorf("commitments must be 32 bytes long")
-	} else if !ValidFilecoinMultihash(uint64(mh)) {
-		return cid.Undef, ErrIncorrectHash
-	} else if !ValidFilecoinCodec(uint64(mc)) {
-		return cid.Undef, ErrIncorrectCodec
+	if err := ValidateFilecoinCidSegments(mc, mh, commitment); err != nil {
+		return cid.Undef, err
 	}
 
 	mhBuf := make(
@@ -51,89 +47,97 @@ func CommitmentToCID(commitment []byte, mc FilMultiCodec, mh FilMultiHash) (cid.
 }
 
 // CIDToCommitment extracts the raw data commitment from a CID
-// assuming that it has the correct hashing function and
-// serialization types
+// after validating that the codec and hash type are consistent
 func CIDToCommitment(c cid.Cid) ([]byte, FilMultiCodec, error) {
-	if !ValidFilecoinCodec(c.Type()) {
-		return nil, FC_UNDEFINED, ErrIncorrectCodec
-	}
 	decoded, err := multihash.Decode([]byte(c.Hash()))
 	if err != nil {
 		return nil, FC_UNDEFINED, xerrors.Errorf("Error decoding data commitment hash: %w", err)
 	}
-	if !ValidFilecoinMultihash(decoded.Code) {
-		return nil, FC_UNDEFINED, ErrIncorrectHash
+
+	if err := ValidateFilecoinCidSegments(
+		FilMultiCodec(c.Type()),
+		FilMultiHash(decoded.Code),
+		decoded.Digest,
+	); err != nil {
+		return nil, FC_UNDEFINED, err
 	}
+
 	return decoded.Digest, FilMultiCodec(c.Type()), nil
 }
 
 // DataCommitmentV1ToCID converts a raw data commitment to a CID
 // by adding:
-// - codec of type FC_UNSEALED_V1
-// - hashing type of FC_SHA2_256_TRUNC254
+// - codec: cid.FilCommitmentUnsealed
+// - hash type: multihash.SHA2_256_TRUNC254_PADDED
 func DataCommitmentV1ToCID(commD []byte) (cid.Cid, error) {
 	return CommitmentToCID(commD, cid.FilCommitmentUnsealed, multihash.SHA2_256_TRUNC254_PADDED)
 }
 
 // CIDToDataCommitmentV1 extracts the raw data commitment from a CID
-// assuming that it has the correct hashing function and
-// serialization types
+// after checking for the correct codec and hash types.
 func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
-	commD, hash, err := CIDToCommitment(c)
+	commD, codec, err := CIDToCommitment(c)
 	if err != nil {
 		return nil, err
 	}
-	if hash != cid.FilCommitmentUnsealed {
-		return nil, ErrIncorrectHash
+	if codec != cid.FilCommitmentUnsealed {
+		return nil, ErrIncorrectCodec
 	}
 	return commD, nil
 }
 
 // ReplicaCommitmentV1ToCID converts a raw data commitment to a CID
 // by adding:
-// - codec of type FC_SEALED_V1
-// - hashing type of FC_SHA2_256_TRUNC254
+// - codec: cid.FilCommitmentSealed
+// - hash type: multihash.POSEIDON_BLS12_381_A1_FC1
 func ReplicaCommitmentV1ToCID(commR []byte) cid.Cid {
-	c, _ := CommitmentToCID(commR, cid.FilCommitmentSealed, multihash.SHA2_256_TRUNC254_PADDED)
+	c, _ := CommitmentToCID(commR, cid.FilCommitmentSealed, multihash.POSEIDON_BLS12_381_A1_FC1)
 	return c
 }
 
 // CIDToReplicaCommitmentV1 extracts the raw replica commitment from a CID
-// assuming that it has the correct hashing function and
-// serialization types
+// after checking for the correct codec and hash types.
 func CIDToReplicaCommitmentV1(c cid.Cid) ([]byte, error) {
-	commR, hash, err := CIDToCommitment(c)
+	commR, codec, err := CIDToCommitment(c)
 	if err != nil {
 		return nil, err
 	}
-	if hash != cid.FilCommitmentSealed {
-		return nil, ErrIncorrectHash
+	if codec != cid.FilCommitmentSealed {
+		return nil, ErrIncorrectCodec
 	}
 	return commR, nil
+}
+
+// ValidateFilecoinCidSegments returns an error if the provided CID parts
+// conflict with each other.
+func ValidateFilecoinCidSegments(mc FilMultiCodec, mh FilMultiHash, commitment []byte) error {
+
+	switch mc {
+	case cid.FilCommitmentUnsealed:
+		if mh != multihash.SHA2_256_TRUNC254_PADDED {
+			return ErrIncorrectHash
+		}
+	case cid.FilCommitmentSealed:
+		if mh != multihash.POSEIDON_BLS12_381_A1_FC1 {
+			return ErrIncorrectHash
+		}
+	default: // neigher of the codecs above: we are not in Fil teritory
+		return ErrIncorrectCodec
+	}
+
+	if len(commitment) != 32 {
+		return fmt.Errorf("commitments must be 32 bytes long")
+	}
+
+	return nil
 }
 
 // PieceCommitmentV1ToCID converts a commP to a CID
 // -- it is just a helper function that is equivalent to
 // DataCommitmentV1ToCID.
-func PieceCommitmentV1ToCID(commP []byte) (cid.Cid, error) {
-	return DataCommitmentV1ToCID(commP)
-}
+var PieceCommitmentV1ToCID = DataCommitmentV1ToCID
 
 // CIDToPieceCommitmentV1 converts a CID to a commP
 // -- it is just a helper function that is equivalent to
 // CIDToDataCommitmentV1.
-func CIDToPieceCommitmentV1(c cid.Cid) ([]byte, error) {
-	return CIDToDataCommitmentV1(c)
-}
-
-// ValidFilecoinCodec returns true if the given multicodec type
-// is recognized as belonging to filecoin
-func ValidFilecoinCodec(mc uint64) bool {
-	return mc == cid.FilCommitmentUnsealed || mc == cid.FilCommitmentSealed
-}
-
-// ValidFilecoinMultihash returns true if the given multihash type
-// is recognized as belonging to filecoin
-func ValidFilecoinMultihash(mh uint64) bool {
-	return mh == multihash.SHA2_256_TRUNC254_PADDED // sha2-256-trunc2 is all we support for now
-}
+var CIDToPieceCommitmentV1 = CIDToDataCommitmentV1
