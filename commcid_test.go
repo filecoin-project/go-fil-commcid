@@ -82,7 +82,8 @@ func TestReplicaCommitmentToCID(t *testing.T) {
 	_, err := rand.Read(randBytes)
 	require.NoError(t, err)
 
-	c := commcid.ReplicaCommitmentV1ToCID(randBytes)
+	c, err := commcid.ReplicaCommitmentV1ToCID(randBytes)
+	require.NoError(t, err)
 
 	require.Equal(t, c.Prefix().Codec, uint64(cid.FilCommitmentSealed))
 	mh := c.Hash()

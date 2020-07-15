@@ -97,9 +97,8 @@ func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
 // by adding:
 // - codec: cid.FilCommitmentSealed
 // - hash type: multihash.POSEIDON_BLS12_381_A1_FC1
-func ReplicaCommitmentV1ToCID(commR []byte) cid.Cid {
-	c, _ := CommitmentToCID(cid.FilCommitmentSealed, multihash.POSEIDON_BLS12_381_A1_FC1, commR)
-	return c
+func ReplicaCommitmentV1ToCID(commR []byte) (cid.Cid, error) {
+	return CommitmentToCID(cid.FilCommitmentSealed, multihash.POSEIDON_BLS12_381_A1_FC1, commR)
 }
 
 // CIDToReplicaCommitmentV1 extracts the raw replica commitment from a CID
