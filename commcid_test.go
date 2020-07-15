@@ -44,12 +44,27 @@ func TestCIDToDataCommitment(t *testing.T) {
 			require.True(t, bytes.Equal(decoded, randBytes))
 		})
 
-		t.Run("error on incorrect CID format", func(t *testing.T) {
+		t.Run("error on non-fil codec", func(t *testing.T) {
 			c := cid.NewCidV1(cid.DagCBOR, hash)
 			decoded, err := commcid.CIDToDataCommitmentV1(c)
 			require.EqualError(t, err, commcid.ErrIncorrectCodec.Error())
 			require.Nil(t, decoded)
 		})
+
+		t.Run("error on wrong fil codec", func(t *testing.T) {
+			c := cid.NewCidV1(cid.FilCommitmentSealed, testMultiHash(multihash.POSEIDON_BLS12_381_A1_FC1, randBytes, 0))
+			decoded, err := commcid.CIDToDataCommitmentV1(c)
+			require.EqualError(t, err, commcid.ErrIncorrectCodec.Error())
+			require.Nil(t, decoded)
+		})
+
+		t.Run("error on fil hash/codec mismatch", func(t *testing.T) {
+			c := cid.NewCidV1(cid.FilCommitmentUnsealed, testMultiHash(multihash.POSEIDON_BLS12_381_A1_FC1, randBytes, 0))
+			decoded, err := commcid.CIDToDataCommitmentV1(c)
+			require.EqualError(t, err, commcid.ErrIncorrectHash.Error())
+			require.Nil(t, decoded)
+		})
+
 	})
 
 	t.Run("error on incorrectly formatted hash", func(t *testing.T) {
@@ -58,14 +73,6 @@ func TestCIDToDataCommitment(t *testing.T) {
 		decoded, err := commcid.CIDToDataCommitmentV1(c)
 		require.Error(t, err)
 		require.Regexp(t, "^Error decoding data commitment hash:", err.Error())
-		require.Nil(t, decoded)
-	})
-	t.Run("error on wrong hash type", func(t *testing.T) {
-		encoded, err := multihash.Encode(randBytes, multihash.SHA2_256)
-		require.NoError(t, err)
-		c := cid.NewCidV1(cid.FilCommitmentUnsealed, multihash.Multihash(encoded))
-		decoded, err := commcid.CIDToDataCommitmentV1(c)
-		require.EqualError(t, err, commcid.ErrIncorrectHash.Error())
 		require.Nil(t, decoded)
 	})
 }
@@ -107,16 +114,29 @@ func TestCIDToReplicaCommitment(t *testing.T) {
 			require.EqualError(t, err, commcid.ErrIncorrectCodec.Error())
 			require.Nil(t, decoded)
 		})
+
+		t.Run("error on non-fil codec", func(t *testing.T) {
+			c := cid.NewCidV1(cid.DagCBOR, hash)
+			decoded, err := commcid.CIDToReplicaCommitmentV1(c)
+			require.EqualError(t, err, commcid.ErrIncorrectCodec.Error())
+			require.Nil(t, decoded)
+		})
+
+		t.Run("error on wrong fil codec", func(t *testing.T) {
+			c := cid.NewCidV1(cid.FilCommitmentUnsealed, testMultiHash(multihash.SHA2_256_TRUNC254_PADDED, randBytes, 0))
+			decoded, err := commcid.CIDToReplicaCommitmentV1(c)
+			require.EqualError(t, err, commcid.ErrIncorrectCodec.Error())
+			require.Nil(t, decoded)
+		})
+
+		t.Run("error on fil hash/codec mismatch", func(t *testing.T) {
+			c := cid.NewCidV1(cid.FilCommitmentSealed, testMultiHash(multihash.SHA2_256_TRUNC254_PADDED, randBytes, 0))
+			decoded, err := commcid.CIDToReplicaCommitmentV1(c)
+			require.EqualError(t, err, commcid.ErrIncorrectHash.Error())
+			require.Nil(t, decoded)
+		})
 	})
 
-	t.Run("error on incorrectly formatted hash", func(t *testing.T) {
-		hash := testMultiHash(cid.FilCommitmentSealed, randBytes, 0)
-		c := cid.NewCidV1(cid.Raw, hash)
-		decoded, err := commcid.CIDToReplicaCommitmentV1(c)
-		require.Error(t, err)
-		require.Regexp(t, "^unexpected commitment codec", err.Error())
-		require.Nil(t, decoded)
-	})
 	t.Run("error on wrong hash type", func(t *testing.T) {
 		encoded, err := multihash.Encode(randBytes, multihash.SHA2_256)
 		require.NoError(t, err)
@@ -125,6 +145,15 @@ func TestCIDToReplicaCommitment(t *testing.T) {
 		require.EqualError(t, err, commcid.ErrIncorrectCodec.Error())
 		require.Nil(t, decoded)
 	})
+
+	t.Run("error on incorrectly formatted hash", func(t *testing.T) {
+		c := cid.NewCidV1(cid.FilCommitmentUnsealed, testMultiHash(multihash.POSEIDON_BLS12_381_A1_FC1, randBytes, 5))
+		decoded, err := commcid.CIDToReplicaCommitmentV1(c)
+		require.Error(t, err)
+		require.Regexp(t, "^Error decoding data commitment hash:", err.Error())
+		require.Nil(t, decoded)
+	})
+
 }
 
 func TestPieceCommitmentToCID(t *testing.T) {
@@ -142,6 +171,9 @@ func TestPieceCommitmentToCID(t *testing.T) {
 	require.Equal(t, decoded.Code, uint64(multihash.SHA2_256_TRUNC254_PADDED))
 	require.Equal(t, decoded.Length, len(randBytes))
 	require.True(t, bytes.Equal(decoded.Digest, randBytes))
+
+	_, err = commcid.PieceCommitmentV1ToCID(randBytes[1:])
+	require.Regexp(t, "^commitments must be 32 bytes long", err.Error())
 }
 
 func TestCIDToPieceCommitment(t *testing.T) {
