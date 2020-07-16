@@ -19,12 +19,11 @@ commitment hashes used by Filecoin and Content IDs that meet [the CIDv1 standard
 
 See the [Filecoin PoRep Spec](https://filecoin-project.github.io/specs/#algorithms__porep) and the [Filecoin Paper](https://filecoin.io/filecoin.pdf) for how these commitment hashes (Piece Commitment, Data Commitment, Replica Commitment) are generated.
 
-This library adds codes neccesary to convert those hashes to CIDs
+This library adds codes neccesary to convert those commitment hashes to CIDs
 
-Currently, the serialization format for all Commitment CIDs is raw, cause each
-hash is either a hash of raw data, or a hash of a concentenation of raw hashes. We do not attempt to convert these to IPLD data at this time.
-
-We define 2 hash types, one for sealed data and one for unsealed data, with 8 more hash identifiers reserved for future peice, sector, and replica construction methods
+We define two combinations of `codec` and `multihash`:
+- [fil-commitment-unsealed](https://github.com/multiformats/multicodec/blob/bf5c4806e/table.csv#L435) + [sha2-256-trunc254-padded](https://github.com/multiformats/multicodec/blob/bf5c4806e/table.csv#L110) for Piece Commitments and Data Commitments (shared due to identical underlying structure)
+- [fil-commitment-sealed](https://github.com/multiformats/multicodec/blob/bf5c4806e/table.csv#L436) + [poseidon-bls12_381-a2-fc1](https://github.com/multiformats/multicodec/blob/bf5c4806e/table.csv#L433) for Replica Commitments
 
 ## Usage
 
@@ -45,9 +44,10 @@ var commP []byte
 var commD []byte
 var commR []byte            
 
-pieceCID := commcid.PieceCommmitmentV1ToCID(commP)
-unsealedSectorCID := commcid.DataCommmitmentV1ToCID(commD)
-sealedSectorCID := commcid.ReplicaCommmitmentV1ToCID(commR)
+// will error if the given commX is not the expected size (currently 32 bytes)
+pieceCID, err := commcid.PieceCommitmentV1ToCID(commP)
+unsealedSectorCID, err := commcid.DataCommitmentV1ToCID(commD)
+sealedSectorCID, err := commcid.ReplicaCommitmentV1ToCID(commR)
 
 ```
 
@@ -90,12 +90,12 @@ import (
 )
 
 var commIn []byte
-var hashingAlgorithm FilecoinMultihashType          
+var filCodec commcid.FilMultiCodec
+var filHashAlg commcid.FilMultiHash
 
-commCID := commcid.CommmitmentToCID(commIn, hashingAlgorithm)
+commCID, err := commcid.CommmitmentToCID(filCodecIn, filHashAlgIn, commIn)
 
-commOut, hashOut, err := commcid.CIDToCommitment(commCID)
-
+filCodecOut, filHashOut, commOut, err := commcid.CIDToCommitment(commCID)
 ```
 
 ## Contributing
