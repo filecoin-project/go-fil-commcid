@@ -3,11 +3,14 @@ package commcid_test
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"testing"
 
 	commcid "github.com/filecoin-project/go-fil-commcid"
+	commhash "github.com/filecoin-project/go-fil-commp-hashhash"
 	"github.com/ipfs/go-cid"
+	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
 	"github.com/stretchr/testify/require"
@@ -219,14 +222,34 @@ func TestCIDToPieceCommitment(t *testing.T) {
 	})
 }
 
-func TestPieceCommitmentToPieceMhCID(t *testing.T) {
-	randBytes := make([]byte, 33)
+func randomPieceMhInfo(t *testing.T) (treeHeight uint8, paddingSize uint64, dataSize uint64, digest []byte, mhDigest []byte) {
+	// CID size = 1 byte tree height + unsigned_varint_data_padding_size (1 to 9 bytes) + 32 byte digest
+	// Min/Max size = 34 -> 42
+	t.Helper()
+
+	randBytes := make([]byte, 40)
 	_, err := rand.Read(randBytes)
 	require.NoError(t, err)
-	randHeight := randBytes[0]
-	randBytes = randBytes[1:]
+	digest = randBytes[0:32]
+	dataSize = binary.LittleEndian.Uint64(randBytes[32:])
+	// padded dataSize must be less than 2^63 - 1 so we divide by 4 to be safe
+	dataSize = dataSize >> 2
+	// TODO: at the moment some of the code here requires max size to be 128 times lower
+	dataSize = dataSize >> 7
+	// minimum dataSize is 127
+	dataSize += 127
+	treeHeight, paddingSize, err = commcid.UnpaddedSizeToV1TreeHeightAndPadding(dataSize)
+	require.NoError(t, err)
 
-	c, err := commcid.DataCommitmentV1ToPieceMhCID(randBytes, randHeight)
+	uvarintPaddingSize := varint.ToUvarint(paddingSize)
+	mhDigest = append(append([]byte{treeHeight}, uvarintPaddingSize...), digest...)
+	return
+}
+
+func TestPieceCommitmentToPieceMhCID(t *testing.T) {
+	height, paddingSize, dataSize, digest, _ := randomPieceMhInfo(t)
+
+	c, err := commcid.DataCommitmentV1ToPieceMhCID(digest, dataSize)
 	require.NoError(t, err)
 
 	require.Equal(t, c.Prefix().Codec, uint64(cid.Raw))
@@ -234,79 +257,98 @@ func TestPieceCommitmentToPieceMhCID(t *testing.T) {
 	decoded, err := multihash.Decode([]byte(mh))
 	require.NoError(t, err)
 	require.Equal(t, decoded.Code, uint64(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE))
-	require.Equal(t, decoded.Length, len(randBytes)+1)
-	require.True(t, decoded.Digest[0] == randHeight)
-	require.True(t, bytes.Equal(decoded.Digest[1:], randBytes))
+	require.Equal(t, decoded.Length, 1+varint.UvarintSize(paddingSize)+32)
+	require.True(t, decoded.Digest[0] == height)
 
-	_, err = commcid.DataCommitmentV1ToPieceMhCID(randBytes[1:], randHeight)
+	paddingSizeFromMhDigest, _, err := varint.FromUvarint(decoded.Digest[1 : varint.UvarintSize(paddingSize)+1])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	require.Equal(t, paddingSize, paddingSizeFromMhDigest)
+
+	_, err = commcid.DataCommitmentV1ToPieceMhCID(digest[1:], dataSize)
 	require.Regexp(t, "^commitments must be 32 bytes long", err.Error())
 }
 
 func TestPieceMhCIDToPieceCommitment(t *testing.T) {
-	randBytes := make([]byte, 33)
-	_, err := rand.Read(randBytes)
-	require.NoError(t, err)
-	// Height must be at least 7
-	randBytes[0] = (randBytes[0] % (255 - 7)) + 7
+	treeHeight, paddingSize, expectedDataSize, expectedDigest, mhDigest := randomPieceMhInfo(t)
 
 	t.Run("with correct hash format", func(t *testing.T) {
-		hash := testMultiHash(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, randBytes, 0)
+		hash := testMultiHash(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, mhDigest, 0)
 
 		t.Run("decodes raw commitment hash when correct cid format", func(t *testing.T) {
 			c := cid.NewCidV1(cid.Raw, hash)
-			decoded, height, err := commcid.PieceMhCIDToDataCommitmentV1(c)
+			digest, dataSize, err := commcid.PieceMhCIDToDataCommitmentV1(c)
+			t.Log(treeHeight)
+			t.Log(paddingSize)
 			require.NoError(t, err)
-			require.True(t, height == randBytes[0])
-			require.True(t, bytes.Equal(decoded, randBytes[1:]))
+			require.Equal(t, expectedDataSize, dataSize)
+			require.True(t, bytes.Equal(expectedDigest, digest))
 		})
 
 		t.Run("don't error on non-Raw CID format", func(t *testing.T) {
 			c := cid.NewCidV1(cid.DagCBOR, hash)
-			decoded, height, err := commcid.PieceMhCIDToDataCommitmentV1(c)
+			digest, dataSize, err := commcid.PieceMhCIDToDataCommitmentV1(c)
 			require.NoError(t, err)
-			require.True(t, height == randBytes[0])
-			require.True(t, bytes.Equal(decoded, randBytes[1:]))
+			require.Equal(t, expectedDataSize, dataSize)
+			require.True(t, bytes.Equal(expectedDigest, digest))
 		})
 	})
 
 	t.Run("error on incorrectly formatted hash", func(t *testing.T) {
-		hash := testMultiHash(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, randBytes, 5)
+		hash := testMultiHash(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, mhDigest, 5)
 		c := cid.NewCidV1(cid.Raw, hash)
-		decoded, _, err := commcid.PieceMhCIDToDataCommitmentV1(c)
+		digest, _, err := commcid.PieceMhCIDToDataCommitmentV1(c)
 		require.Error(t, err)
 		require.Regexp(t, "^Error decoding data commitment hash:", err.Error())
-		require.Nil(t, decoded)
+		require.Nil(t, digest)
 	})
 	t.Run("error on wrong hash type", func(t *testing.T) {
-		encoded, err := multihash.Encode(randBytes, multihash.SHA2_256)
+		encoded, err := multihash.Encode(mhDigest, multihash.SHA2_256)
 		require.NoError(t, err)
 		c := cid.NewCidV1(cid.Raw, multihash.Multihash(encoded))
-		decoded, _, err := commcid.PieceMhCIDToDataCommitmentV1(c)
+		digest, _, err := commcid.PieceMhCIDToDataCommitmentV1(c)
 		require.EqualError(t, err, commcid.ErrIncorrectHash.Error())
-		require.Nil(t, decoded)
+		require.Nil(t, digest)
 	})
 }
 
 func TestTreeHeight(t *testing.T) {
 	// Add test fixtures
 	noFr32PaddingTests := map[string]struct {
-		size   uint64
-		height uint8
+		size    uint64
+		height  uint8
+		padding int64
 	}{
-		"127OfEach0-1-2-3":          {127 * 4, 4},
-		"512-bytes-should-pad-over": {512, 5},
-		"0":                         {0, 0},
-		"1":                         {1, 0},
-		"31":                        {31, 0},
-		"32":                        {32, 1},
-		"127":                       {127, 2},
-		"32GiB":                     {32 << 30, 31},
-		"64GiB":                     {64 << 30, 32},
+		"127OfEach0-1-2-3":          {127 * 4, 4, 0},
+		"512-bytes-should-pad-over": {512, 5, 504},
+		"0":                         {0, 0, -1},
+		"1":                         {1, 0, -1},
+		"31":                        {31, 0, -1},
+		"32":                        {32, 1, -1},
+		"127":                       {127, 2, 0},
+		"32GiB":                     {32 << 30, 31, 33822867456},
+		"32GiB-post-padding":        {(32 << 30) * 127 / 128, 30, 0},
+		"64GiB":                     {64 << 30, 32, 67645734912},
+		"64GiB-post-padding":        {(64 << 30) * 127 / 128, 31, 0},
 	}
 
 	for name, tc := range noFr32PaddingTests {
 		t.Run(fmt.Sprintf("non-fr32-padding %s", name), func(t *testing.T) {
-			require.Equal(t, tc.height, commcid.UnpaddedSizeToV1TreeHeight(tc.size))
+			t.Run("height-only", func(t *testing.T) {
+				height, err := commcid.UnpaddedSizeToV1TreeHeight(tc.size)
+				require.NoError(t, err)
+				require.Equal(t, tc.height, height)
+			})
+			if tc.size >= 127 {
+				t.Run("height-and-padding", func(t *testing.T) {
+					height, padding, err := commcid.UnpaddedSizeToV1TreeHeightAndPadding(tc.size)
+					require.NoError(t, err)
+					require.Equal(t, tc.height, height)
+					require.Equal(t, uint64(tc.padding), padding)
+				})
+			}
 		})
 	}
 
@@ -335,41 +377,95 @@ func TestTreeHeight(t *testing.T) {
 	}
 }
 
-func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
-	randBytes := make([]byte, 33)
-	_, err := rand.Read(randBytes)
-	require.NoError(t, err)
-	// Height must be at least 7
-	randBytes[0] = (randBytes[0] % (255 - 7)) + 7
+func TestMultihashes(t *testing.T) {
+	data127EachOf0_1_2_3 := append(append(append(bytes.Repeat([]byte{0x00}, 127), bytes.Repeat([]byte{0x01}, 127)...), bytes.Repeat([]byte{0x02}, 127)...), bytes.Repeat([]byte{0x03}, 127)...)
 
-	mhv1 := testMultiHash(multihash.SHA2_256_TRUNC254_PADDED, randBytes[1:], 0)
+	// Add test fixtures
+	tests := map[string]struct {
+		data     []byte
+		v2CidStr string
+	}{
+		"127OfEach0-1-2-3":              {data127EachOf0_1_2_3, "bafkzcibcaqaes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
+		"127OfEach0-1-2-3-Then127*4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127*4)...), "bafkzcibcauan42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
+		"127OfEach0-1-2-3-Then127+4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+4)...), "bafkzcibdax4qfxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then127+5-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+5)...), "bafkzcibdax4afxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+	}
+
+	for name, tc := range tests {
+		t.Run(fmt.Sprintf("%s", name), func(t *testing.T) {
+			v2Cid, err := cid.Parse(tc.v2CidStr)
+			require.NoError(t, err)
+
+			h := &commhash.Calc{}
+			_, err = h.Write(tc.data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest, paddedSize, err := h.Digest()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("digest: %x", digest)
+			t.Logf("unpadded size: %d", len(tc.data))
+			t.Logf("padded fr32 data size: %d", paddedSize)
+
+			computedV2Cid, err := commcid.DataCommitmentV1ToPieceMhCID(digest, uint64(len(tc.data)))
+			require.NoError(t, err)
+
+			cidStr, err := computedV2Cid.StringOfBase(multibase.Base16)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			c, _, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(computedV2Cid)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			t.Logf(cidStr)
+			t.Logf(computedV2Cid.String())
+			t.Logf(c.String())
+
+			require.True(t, v2Cid.Equals(computedV2Cid))
+		})
+	}
+
+}
+
+func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
+	_, _, expectedDataSize, expectedDigest, mhDigest := randomPieceMhInfo(t)
+
+	mhv1 := testMultiHash(multihash.SHA2_256_TRUNC254_PADDED, expectedDigest, 0)
 	cidv1 := cid.NewCidV1(cid.FilCommitmentUnsealed, mhv1)
 
-	mhv2 := testMultiHash(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, randBytes, 0)
+	mhv2 := testMultiHash(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, mhDigest, 0)
 	cidv2 := cid.NewCidV1(cid.Raw, mhv2)
 
-	t.Run("convert v1 piece cid + height to piece mh cid", func(t *testing.T) {
-		c, err := commcid.ConvertDataCommitmentV1V1CIDtoPieceMhCID(cidv1, randBytes[0])
+	t.Run("convert v1 piece cid + data size to piece mh cid", func(t *testing.T) {
+		c, err := commcid.ConvertDataCommitmentV1V1CIDtoPieceMhCID(cidv1, expectedDataSize)
 		require.NoError(t, err)
 		require.True(t, c.Equals(cidv2))
 	})
 
-	t.Run("convert piece mh cid to v1 piece cid + height", func(t *testing.T) {
-		c, height, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(cidv2)
+	t.Run("convert piece mh cid to v1 piece cid + data size", func(t *testing.T) {
+		c, dataSize, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(cidv2)
 		require.NoError(t, err)
 		require.True(t, c.Equals(cidv1))
-		require.Equal(t, randBytes[0], height)
+		require.Equal(t, expectedDataSize, dataSize)
 	})
 
 	// Add test fixtures
 	tests := map[string]struct {
-		v1CidStr string
-		height   uint8
-		v2CidStr string
+		v1CidStr         string
+		unpaddedDataSize uint64
+		v2CidStr         string
 	}{
-		"127OfEach0-1-2-3": {"baga6ea4seaqes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi", commcid.UnpaddedSizeToV1TreeHeight(127 * 4), "bafkzcibbarew3lqmzhrgl37fuadoqbrguxofyqe6luyvlqjzqtfpnsgvz7lak"},
-		"empty32GiB":       {"baga6ea4seaqao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq", commcid.Fr32PaddedSizeToV1TreeHeight(32 << 30), "bafkzcibbdydx4x66gxcqveyduviaty2jrjhl5x7ttrbloefxgdmoy6whv6td4"},
-		"empty64GiB":       {"baga6ea4seaqomqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq", commcid.Fr32PaddedSizeToV1TreeHeight(64 << 30), "bafkzcibbd7teabngx7rxo6ktxcww56j7b7fbasnsaqlfj4vech3xaj4zz3hae"},
+		"127OfEach0-1-2-3":              {"baga6ea4seaqes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi", 127 * 4, "bafkzcibcaqaes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
+		"empty32GiB":                    {"baga6ea4seaqao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq", (32 << 30) * 127 / 128, "bafkzcibcdyaao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq"},
+		"empty64GiB":                    {"baga6ea4seaqomqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq", (64 << 30) * 127 / 128, "bafkzcibcd4aomqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq"},
+		"127OfEach0-1-2-3-Then127*4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127 * 8, "bafkzcibcauan42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
+		"127OfEach0-1-2-3-Then127+4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 4, "bafkzcibdax4qfxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then127+5-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 5, "bafkzcibdax4afxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
 	}
 
 	for name, tc := range tests {
@@ -380,9 +476,10 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 			v2Cid, err := cid.Parse(tc.v2CidStr)
 			require.NoError(t, err)
 
-			computedV2Cid, err := commcid.ConvertDataCommitmentV1V1CIDtoPieceMhCID(v1Cid, tc.height)
+			computedV2Cid, err := commcid.ConvertDataCommitmentV1V1CIDtoPieceMhCID(v1Cid, tc.unpaddedDataSize)
 			require.NoError(t, err)
 
+			require.Equal(t, v2Cid, computedV2Cid)
 			require.True(t, v2Cid.Equals(computedV2Cid))
 		})
 
@@ -397,7 +494,7 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 			require.NoError(t, err)
 
 			require.True(t, v1Cid.Equals(computedV1Cid))
-			require.Equal(t, tc.height, computedHeight)
+			require.Equal(t, tc.unpaddedDataSize, computedHeight)
 		})
 	}
 }
