@@ -189,9 +189,9 @@ func DataCommitmentV1ToPieceMhCID(commD []byte, unpaddedDataSize uint64) (cid.Ci
 
 	pos := varint.PutUvarint(mhBuf, uint64(mh))
 	pos += varint.PutUvarint(mhBuf[pos:], uint64(digestSize))
+	pos += varint.PutUvarint(mhBuf[pos:], padding)
 	mhBuf[pos] = height
 	pos++
-	pos += varint.PutUvarint(mhBuf[pos:], padding)
 	copy(mhBuf[pos:], commD)
 
 	return cid.NewCidV1(uint64(cid.Raw), mhBuf), nil
@@ -227,8 +227,7 @@ func PieceMhCIDToDataCommitmentV1(c cid.Cid) ([]byte, uint64, error) {
 		return nil, 0, xerrors.Errorf("expected multihash digest to be at least 34 bytes, but was %d bytes", decoded.Length)
 	}
 
-	treeHeight := decoded.Digest[0]
-	paddingSize, paddingSizeVarintLen, err := varint.FromUvarint(decoded.Digest[1:])
+	paddingSize, paddingSizeVarintLen, err := varint.FromUvarint(decoded.Digest)
 	if err != nil {
 		return nil, 0, xerrors.Errorf("error decoding padding size: %w", err)
 	}
@@ -236,6 +235,8 @@ func PieceMhCIDToDataCommitmentV1(c cid.Cid) ([]byte, uint64, error) {
 	if expectedDigestSize := 33 + paddingSizeVarintLen; decoded.Length != expectedDigestSize {
 		return nil, 0, xerrors.Errorf("expected multihash digest to be %d bytes, but was %d bytes", expectedDigestSize, decoded.Length)
 	}
+
+	treeHeight := decoded.Digest[paddingSizeVarintLen]
 
 	paddedFr32TreeSize := uint64(32) << treeHeight
 	paddedTreeSize := paddedFr32TreeSize * 127 / 128

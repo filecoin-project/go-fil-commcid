@@ -242,7 +242,7 @@ func randomPieceMhInfo(t *testing.T) (treeHeight uint8, paddingSize uint64, data
 	require.NoError(t, err)
 
 	uvarintPaddingSize := varint.ToUvarint(paddingSize)
-	mhDigest = append(append([]byte{treeHeight}, uvarintPaddingSize...), digest...)
+	mhDigest = append(append(uvarintPaddingSize[:], treeHeight), digest...)
 	return
 }
 
@@ -258,9 +258,9 @@ func TestPieceCommitmentToPieceMhCID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, decoded.Code, uint64(commcid.FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE))
 	require.Equal(t, decoded.Length, 1+varint.UvarintSize(paddingSize)+32)
-	require.True(t, decoded.Digest[0] == height)
+	require.True(t, decoded.Digest[varint.UvarintSize(paddingSize)] == height)
 
-	paddingSizeFromMhDigest, _, err := varint.FromUvarint(decoded.Digest[1 : varint.UvarintSize(paddingSize)+1])
+	paddingSizeFromMhDigest, _, err := varint.FromUvarint(decoded.Digest[0:varint.UvarintSize(paddingSize)])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,10 +385,10 @@ func TestMultihashes(t *testing.T) {
 		data     []byte
 		v2CidStr string
 	}{
-		"127OfEach0-1-2-3":              {data127EachOf0_1_2_3, "bafkzcibcaqaes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
-		"127OfEach0-1-2-3-Then127*4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127*4)...), "bafkzcibcauan42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
-		"127OfEach0-1-2-3-Then127+4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+4)...), "bafkzcibdax4qfxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
-		"127OfEach0-1-2-3-Then127+5-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+5)...), "bafkzcibdax4afxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3":              {data127EachOf0_1_2_3, "bafkzcibcaaces3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
+		"127OfEach0-1-2-3-Then127*4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127*4)...), "bafkzcibcaac542av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
+		"127OfEach0-1-2-3-Then127+4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+4)...), "bafkzcibd7ebalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then127+5-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+5)...), "bafkzcibd7abalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
 	}
 
 	for name, tc := range tests {
@@ -426,7 +426,7 @@ func TestMultihashes(t *testing.T) {
 			t.Logf(computedV2Cid.String())
 			t.Logf(c.String())
 
-			require.True(t, v2Cid.Equals(computedV2Cid))
+			require.Equal(t, v2Cid, computedV2Cid)
 		})
 	}
 
@@ -444,13 +444,13 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 	t.Run("convert v1 piece cid + data size to piece mh cid", func(t *testing.T) {
 		c, err := commcid.ConvertDataCommitmentV1V1CIDtoPieceMhCID(cidv1, expectedDataSize)
 		require.NoError(t, err)
-		require.True(t, c.Equals(cidv2))
+		require.Equal(t, cidv2, c)
 	})
 
 	t.Run("convert piece mh cid to v1 piece cid + data size", func(t *testing.T) {
 		c, dataSize, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(cidv2)
 		require.NoError(t, err)
-		require.True(t, c.Equals(cidv1))
+		require.Equal(t, cidv1, c)
 		require.Equal(t, expectedDataSize, dataSize)
 	})
 
@@ -460,12 +460,12 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 		unpaddedDataSize uint64
 		v2CidStr         string
 	}{
-		"127OfEach0-1-2-3":              {"baga6ea4seaqes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi", 127 * 4, "bafkzcibcaqaes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
-		"empty32GiB":                    {"baga6ea4seaqao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq", (32 << 30) * 127 / 128, "bafkzcibcdyaao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq"},
-		"empty64GiB":                    {"baga6ea4seaqomqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq", (64 << 30) * 127 / 128, "bafkzcibcd4aomqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq"},
-		"127OfEach0-1-2-3-Then127*4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127 * 8, "bafkzcibcauan42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
-		"127OfEach0-1-2-3-Then127+4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 4, "bafkzcibdax4qfxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
-		"127OfEach0-1-2-3-Then127+5-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 5, "bafkzcibdax4afxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3":              {"baga6ea4seaqes3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi", 127 * 4, "bafkzcibcaaces3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
+		"empty32GiB":                    {"baga6ea4seaqao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq", (32 << 30) * 127 / 128, "bafkzcibcaapao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq"},
+		"empty64GiB":                    {"baga6ea4seaqomqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq", (64 << 30) * 127 / 128, "bafkzcibcaap6mqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq"},
+		"127OfEach0-1-2-3-Then127*4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127 * 8, "bafkzcibcaac542av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
+		"127OfEach0-1-2-3-Then127+4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 4, "bafkzcibd7ebalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then127+5-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 5, "bafkzcibd7abalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
 	}
 
 	for name, tc := range tests {
@@ -480,7 +480,6 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, v2Cid, computedV2Cid)
-			require.True(t, v2Cid.Equals(computedV2Cid))
 		})
 
 		t.Run(fmt.Sprintf("%s-v2-to-v1", name), func(t *testing.T) {
@@ -493,7 +492,7 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 			computedV1Cid, computedHeight, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(v2Cid)
 			require.NoError(t, err)
 
-			require.True(t, v1Cid.Equals(computedV1Cid))
+			require.Equal(t, v1Cid, computedV1Cid)
 			require.Equal(t, tc.unpaddedDataSize, computedHeight)
 		})
 	}
