@@ -387,8 +387,8 @@ func TestMultihashes(t *testing.T) {
 	}{
 		"127OfEach0-1-2-3":              {data127EachOf0_1_2_3, "bafkzcibcaaces3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
 		"127OfEach0-1-2-3-Then127*4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127*4)...), "bafkzcibcaac542av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
-		"127OfEach0-1-2-3-Then127+4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+4)...), "bafkzcibd7ebalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
-		"127OfEach0-1-2-3-Then127+5-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127+5)...), "bafkzcibd7abalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then4-0s":     {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 4)...), "bafkzcibd7abqlxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then5-0s":     {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 5)...), "bafkzcibd64bqlxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
 	}
 
 	for name, tc := range tests {
@@ -464,8 +464,8 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 		"empty32GiB":                    {"baga6ea4seaqao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq", (32 << 30) * 127 / 128, "bafkzcibcaapao7s73y24kcutaosvacpdjgfe5pw76ooefnyqw4ynr3d2y6x2mpq"},
 		"empty64GiB":                    {"baga6ea4seaqomqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq", (64 << 30) * 127 / 128, "bafkzcibcaap6mqafu276g53zko4k23xzh4h4uecjwicbmvhsuqi7o4bhthhm4aq"},
 		"127OfEach0-1-2-3-Then127*4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127 * 8, "bafkzcibcaac542av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
-		"127OfEach0-1-2-3-Then127+4-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 4, "bafkzcibd7ebalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
-		"127OfEach0-1-2-3-Then127+5-0s": {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 127 + 5, "bafkzcibd7abalxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then4-0s":     {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 4, "bafkzcibd7abqlxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
+		"127OfEach0-1-2-3-Then5-0s":     {"baga6ea4seaqn42av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa", 127*4 + 5, "bafkzcibd64bqlxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
 	}
 
 	for name, tc := range tests {
