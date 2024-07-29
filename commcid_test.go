@@ -2,7 +2,7 @@ package commcid_test
 
 import (
 	"bytes"
-	"math/rand"
+	"crypto/rand"
 	"testing"
 
 	commcid "github.com/filecoin-project/go-fil-commcid"
