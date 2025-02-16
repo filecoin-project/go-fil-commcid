@@ -1,6 +1,6 @@
 module github.com/filecoin-project/go-fil-commcid
 
-go 1.22
+go 1.23
 
 require (
 	github.com/ipfs/go-cid v0.5.0
