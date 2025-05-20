@@ -249,7 +249,7 @@ func randomPieceMhInfo(t *testing.T) (treeHeight uint8, paddingSize uint64, data
 func TestPieceCommitmentToPieceMhCID(t *testing.T) {
 	height, paddingSize, dataSize, digest, _ := randomPieceMhInfo(t)
 
-	c, err := DataCommitmentV1ToPieceMhCID(digest, dataSize)
+	c, err := DataCommitmentToPieceCidv2(digest, dataSize)
 	require.NoError(t, err)
 
 	require.Equal(t, c.Prefix().Codec, uint64(cid.Raw))
@@ -267,7 +267,7 @@ func TestPieceCommitmentToPieceMhCID(t *testing.T) {
 
 	require.Equal(t, paddingSize, paddingSizeFromMhDigest)
 
-	_, err = DataCommitmentV1ToPieceMhCID(digest[1:], dataSize)
+	_, err = DataCommitmentToPieceCidv2(digest[1:], dataSize)
 	require.Regexp(t, "^commitments must be 32 bytes long", err.Error())
 }
 
@@ -279,7 +279,7 @@ func TestPieceMhCIDToPieceCommitment(t *testing.T) {
 
 		t.Run("decodes raw commitment hash when correct cid format", func(t *testing.T) {
 			c := cid.NewCidV1(cid.Raw, hash)
-			digest, dataSize, err := PieceMhCIDToDataCommitmentV1(c)
+			digest, dataSize, err := PieceCidV2ToDataCommitment(c)
 			t.Log(treeHeight)
 			t.Log(paddingSize)
 			require.NoError(t, err)
@@ -289,7 +289,7 @@ func TestPieceMhCIDToPieceCommitment(t *testing.T) {
 
 		t.Run("don't error on non-Raw CID format", func(t *testing.T) {
 			c := cid.NewCidV1(cid.DagCBOR, hash)
-			digest, dataSize, err := PieceMhCIDToDataCommitmentV1(c)
+			digest, dataSize, err := PieceCidV2ToDataCommitment(c)
 			require.NoError(t, err)
 			require.Equal(t, expectedDataSize, dataSize)
 			require.True(t, bytes.Equal(expectedDigest, digest))
@@ -299,7 +299,7 @@ func TestPieceMhCIDToPieceCommitment(t *testing.T) {
 	t.Run("error on incorrectly formatted hash", func(t *testing.T) {
 		hash := testMultiHash(FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, mhDigest, 5)
 		c := cid.NewCidV1(cid.Raw, hash)
-		digest, _, err := PieceMhCIDToDataCommitmentV1(c)
+		digest, _, err := PieceCidV2ToDataCommitment(c)
 		require.Error(t, err)
 		require.Regexp(t, "^Error decoding data commitment hash:", err.Error())
 		require.Nil(t, digest)
@@ -308,7 +308,7 @@ func TestPieceMhCIDToPieceCommitment(t *testing.T) {
 		encoded, err := multihash.Encode(mhDigest, multihash.SHA2_256)
 		require.NoError(t, err)
 		c := cid.NewCidV1(cid.Raw, multihash.Multihash(encoded))
-		digest, _, err := PieceMhCIDToDataCommitmentV1(c)
+		digest, _, err := PieceCidV2ToDataCommitment(c)
 		require.EqualError(t, err, ErrIncorrectHash.Error())
 		require.Nil(t, digest)
 	})
@@ -409,7 +409,7 @@ func TestMultihashes(t *testing.T) {
 			t.Logf("unpadded size: %d", len(tc.data))
 			t.Logf("padded fr32 data size: %d", paddedSize)
 
-			computedV2Cid, err := DataCommitmentV1ToPieceMhCID(digest, uint64(len(tc.data)))
+			computedV2Cid, err := DataCommitmentToPieceCidv2(digest, uint64(len(tc.data)))
 			require.NoError(t, err)
 
 			cidStr, err := computedV2Cid.StringOfBase(multibase.Base16)

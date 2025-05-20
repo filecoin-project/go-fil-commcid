@@ -62,7 +62,7 @@ func CommitmentToCID(mc FilMultiCodec, mh FilMultiHash, commX []byte) (cid.Cid, 
 // FilMultiHash from a CID, after validating that the codec and hash type are
 // consistent
 //
-// Deprecated: Use the alternatives like CIDToReplicaCommitmentV1, CIDToDataCommitmentV1 or PieceMhCIDToDataCommitmentV1
+// Deprecated: Use the alternatives like CIDToReplicaCommitmentV1, CIDToDataCommitmentV1 or PieceCidV2ToDataCommitment
 func CIDToCommitment(c cid.Cid) (FilMultiCodec, FilMultiHash, []byte, error) {
 	decoded, err := multihash.Decode([]byte(c.Hash()))
 	if err != nil {
@@ -83,7 +83,7 @@ func CIDToCommitment(c cid.Cid) (FilMultiCodec, FilMultiHash, []byte, error) {
 // - codec: cid.FilCommitmentUnsealed
 // - hash type: multihash.SHA2_256_TRUNC254_PADDED
 //
-// Deprecated: This function should be avoided when possible and DataCommitmentV1ToPieceMhCID preferred
+// Deprecated: This function should be avoided when possible and DataCommitmentToPieceCidv2 preferred
 func DataCommitmentV1ToCID(commD []byte) (cid.Cid, error) {
 	return CommitmentToCID(cid.FilCommitmentUnsealed, multihash.SHA2_256_TRUNC254_PADDED, commD)
 }
@@ -149,14 +149,14 @@ func PayloadSizeToV1TreeHeightAndPadding(dataSize uint64) (uint8, uint64, error)
 	return treeHeight, padding, nil
 }
 
-// DataCommitmentV1ToPieceMhCID converts a raw data commitment and the height of the commitment tree
+// DataCommitmentToPieceCidv2 converts a raw data commitment and the height of the commitment tree
 // (i.e. log_2(padded data size in bytes) - 5, because 2^5 is 32 bytes which is the leaf node size) to a CID
 // by adding:
 // - codec: cid.Raw
 // - hash type: multihash.SHA2_256_TRUNC254_PADDED_BINARY_TREE
 //
 // The helpers UnpaddedSizeToV1TreeHeight and Fr32PaddedSizeToV1TreeHeight may help in computing tree height
-func DataCommitmentV1ToPieceMhCID(commD []byte, PayloadSize uint64) (cid.Cid, error) {
+func DataCommitmentToPieceCidv2(commD []byte, PayloadSize uint64) (cid.Cid, error) {
 	if len(commD) != 32 {
 		return cid.Undef, fmt.Errorf("commitments must be 32 bytes long")
 	}
@@ -196,7 +196,7 @@ func DataCommitmentV1ToPieceMhCID(commD []byte, PayloadSize uint64) (cid.Cid, er
 // CIDToDataCommitmentV1 extracts the raw data commitment from a CID
 // after checking for the correct codec and hash types.
 //
-// Deprecated: This function should be avoided when possible and PieceMhCIDToDataCommitmentV1 preferred
+// Deprecated: This function should be avoided when possible and PieceCidV2ToDataCommitment preferred
 func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
 	codec, _, commD, err := CIDToCommitment(c)
 	if err != nil {
@@ -208,8 +208,8 @@ func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
 	return commD, nil
 }
 
-// PieceMhCIDToDataCommitmentV1 extracts the raw data commitment and unpadded data size from the CID
-func PieceMhCIDToDataCommitmentV1(c cid.Cid) ([]byte, uint64, error) {
+// PieceCidV2ToDataCommitment extracts the raw data commitment and unpadded data size from the CID
+func PieceCidV2ToDataCommitment(c cid.Cid) ([]byte, uint64, error) {
 	decoded, err := multihash.Decode(c.Hash())
 	if err != nil {
 		return nil, 0, xerrors.Errorf("Error decoding data commitment hash: %w", err)
@@ -307,13 +307,13 @@ func PieceCidV2FromV1(v1PieceCid cid.Cid, unpaddedDataSize uint64) (cid.Cid, err
 		return cid.Undef, xerrors.Errorf("Error decoding piece CID v1: %w", err)
 	}
 
-	return DataCommitmentV1ToPieceMhCID(hashDigest, unpaddedDataSize)
+	return DataCommitmentToPieceCidv2(hashDigest, unpaddedDataSize)
 }
 
 // PieceCidV1FromV2 takes a piece multihash CID and produces a v1 piece CID along with the
 // size of the unpadded data
 func PieceCidV1FromV2(pcidV2 cid.Cid) (cid.Cid, uint64, error) {
-	digest, unpaddedDataSize, err := PieceMhCIDToDataCommitmentV1(pcidV2)
+	digest, unpaddedDataSize, err := PieceCidV2ToDataCommitment(pcidV2)
 	if err != nil {
 		return cid.Undef, 0, xerrors.Errorf("Error decoding data piece CID v2: %w", err)
 	}
@@ -329,12 +329,12 @@ func PieceCidV1FromV2(pcidV2 cid.Cid) (cid.Cid, uint64, error) {
 // -- it is just a helper function that is equivalent to
 // DataCommitmentV1ToCID.
 //
-// Deprecated: This function should be avoided when possible and DataCommitmentV1ToPieceMhCID preferred
+// Deprecated: This function should be avoided when possible and DataCommitmentToPieceCidv2 preferred
 var PieceCommitmentV1ToCID = DataCommitmentV1ToCID
 
 // CIDToPieceCommitmentV1 converts a CID to a commP
 // -- it is just a helper function that is equivalent to
 // CIDToDataCommitmentV1.
 //
-// Deprecated: This function should be avoided when possible and PieceMhCIDToDataCommitmentV1 preferred
+// Deprecated: This function should be avoided when possible and PieceCidV2ToDataCommitment preferred
 var CIDToPieceCommitmentV1 = CIDToDataCommitmentV1
