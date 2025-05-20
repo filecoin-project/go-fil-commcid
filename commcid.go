@@ -55,7 +55,7 @@ func CommitmentToCID(mc FilMultiCodec, mh FilMultiHash, commX []byte) (cid.Cid, 
 	pos += varint.PutUvarint(mhBuf[pos:], uint64(len(commX)))
 	copy(mhBuf[pos:], commX)
 
-	return cid.NewCidV1(uint64(mc), multihash.Multihash(mhBuf)), nil
+	return cid.NewCidV1(uint64(mc), mhBuf), nil
 }
 
 // CIDToCommitment extracts the raw commitment bytes, the FilMultiCodec and
@@ -88,10 +88,10 @@ func DataCommitmentV1ToCID(commD []byte) (cid.Cid, error) {
 	return CommitmentToCID(cid.FilCommitmentUnsealed, multihash.SHA2_256_TRUNC254_PADDED, commD)
 }
 
-// Fr32PaddedSizeToV1TreeHeight calculates the height of the piece tree given data that's been FR32 padded. Because
+// fr32PaddedSizeToV1TreeHeight calculates the height of the piece tree given data that's been FR32 padded. Because
 // pieces are only defined on binary trees if the size is not a power of 2 it will be rounded up to the next one under
 // the assumption that the rest of the tree will be padded out (e.g. with zeros)
-func Fr32PaddedSizeToV1TreeHeight(size uint64) uint8 {
+func fr32PaddedSizeToV1TreeHeight(size uint64) uint8 {
 	if size <= 32 {
 		return 0
 	}
@@ -108,11 +108,11 @@ func Fr32PaddedSizeToV1TreeHeight(size uint64) uint8 {
 	return uint8(b)
 }
 
-// UnpaddedSizeToV1TreeHeight calculates the height of the piece tree given the data that's meant to be encoded in the
+// unpaddedSizeToV1TreeHeight calculates the height of the piece tree given the data that's meant to be encoded in the
 // tree before any FR32 padding is applied. Because pieces are only defined on binary trees of FR32 encoded data if the
 // size is not a power of 2 after the FR32 padding is applied it will be rounded up to the next one under the assumption
 // that the rest of the tree will be padded out (e.g. with zeros)
-func UnpaddedSizeToV1TreeHeight(size uint64) (uint8, error) {
+func unpaddedSizeToV1TreeHeight(size uint64) (uint8, error) {
 	if size*128 < size {
 		return 0, fmt.Errorf("unsupported size: too big")
 	}
@@ -122,7 +122,7 @@ func UnpaddedSizeToV1TreeHeight(size uint64) (uint8, error) {
 		paddedSize += 1
 	}
 
-	return Fr32PaddedSizeToV1TreeHeight(paddedSize), nil
+	return fr32PaddedSizeToV1TreeHeight(paddedSize), nil
 }
 
 // PayloadSizeToV1TreeHeightAndPadding calculates the height of the piece tree given the data that's meant to be
@@ -135,17 +135,13 @@ func PayloadSizeToV1TreeHeightAndPadding(dataSize uint64) (uint8, uint64, error)
 		return 0, 0, fmt.Errorf("unsupported size: too big")
 	}
 
-	if dataSize < 127 {
-		return 0, 0, fmt.Errorf("unsupported size: too small")
-	}
-
 	fr32DataSize := dataSize * 128 / 127
 	// If the FR32 padding doesn't fill an exact number of bytes add up to 1 more byte of zeros to round it out
 	if fr32DataSize*127 != dataSize*128 {
 		fr32DataSize += 1
 	}
 
-	treeHeight := Fr32PaddedSizeToV1TreeHeight(fr32DataSize)
+	treeHeight := fr32PaddedSizeToV1TreeHeight(fr32DataSize)
 	paddedFr32DataSize := uint64(32) << treeHeight
 	paddedDataSize := paddedFr32DataSize / 128 * 127
 	padding := paddedDataSize - dataSize
@@ -160,16 +156,16 @@ func PayloadSizeToV1TreeHeightAndPadding(dataSize uint64) (uint8, uint64, error)
 // - hash type: multihash.SHA2_256_TRUNC254_PADDED_BINARY_TREE
 //
 // The helpers UnpaddedSizeToV1TreeHeight and Fr32PaddedSizeToV1TreeHeight may help in computing tree height
-func DataCommitmentV1ToPieceMhCID(commD []byte, optionalPayloadSize uint64) (cid.Cid, error) {
+func DataCommitmentV1ToPieceMhCID(commD []byte, PayloadSize uint64) (cid.Cid, error) {
 	if len(commD) != 32 {
 		return cid.Undef, fmt.Errorf("commitments must be 32 bytes long")
 	}
 
-	if optionalPayloadSize < 127 {
-		return cid.Undef, fmt.Errorf("unpadded data size must be at least 127, but was %d", optionalPayloadSize)
+	if PayloadSize < 127 {
+		return cid.Undef, fmt.Errorf("unpadded data size must be at least 127, but was %d", PayloadSize)
 	}
 
-	height, padding, err := PayloadSizeToV1TreeHeightAndPadding(optionalPayloadSize)
+	height, padding, err := PayloadSizeToV1TreeHeightAndPadding(PayloadSize)
 	if err != nil {
 		return cid.Undef, err
 	}
