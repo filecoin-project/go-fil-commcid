@@ -1,7 +1,4 @@
 # go-fil-commcid
-[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://ipn.io)
-[![CircleCI](https://circleci.com/gh/filecoin-project/go-fil-commcid.svg?style=svg)](https://circleci.com/gh/filecoin-project/go-fil-commcid)
-[![codecov](https://codecov.io/gh/filecoin-project/go-fil-commcid/branch/master/graph/badge.svg)](https://codecov.io/gh/filecoin-project/go-fil-commcid)
 
 Conversion Utilities Between CID and Piece/Data/Replica Commitments
 
