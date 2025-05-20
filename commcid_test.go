@@ -392,7 +392,7 @@ func TestMultihashes(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		t.Run(fmt.Sprintf("%s", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			v2Cid, err := cid.Parse(tc.v2CidStr)
 			require.NoError(t, err)
 
@@ -422,9 +422,9 @@ func TestMultihashes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			t.Logf(cidStr)
-			t.Logf(computedV2Cid.String())
-			t.Logf(c.String())
+			t.Log(cidStr)
+			t.Log(computedV2Cid.String())
+			t.Log(c.String())
 
 			require.Equal(t, v2Cid, computedV2Cid)
 		})
