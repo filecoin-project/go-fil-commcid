@@ -125,12 +125,12 @@ func UnpaddedSizeToV1TreeHeight(size uint64) (uint8, error) {
 	return Fr32PaddedSizeToV1TreeHeight(paddedSize), nil
 }
 
-// UnpaddedSizeToV1TreeHeightAndPadding calculates the height of the piece tree given the data that's meant to be
+// PayloadSizeToV1TreeHeightAndPadding calculates the height of the piece tree given the data that's meant to be
 // encoded in the tree before any FR32 padding is applied. Because pieces are only defined on binary trees of FR32
 // encoded data if the size is not a power of 2 after the FR32 padding is applied it will be rounded up to the next one
 // under the assumption that the rest of the tree will be padded out (e.g. with zeros). The amount of data padding that
 // is needed to be applied is returned alongside the tree height.
-func UnpaddedSizeToV1TreeHeightAndPadding(dataSize uint64) (uint8, uint64, error) {
+func PayloadSizeToV1TreeHeightAndPadding(dataSize uint64) (uint8, uint64, error) {
 	if dataSize*128 < dataSize {
 		return 0, 0, fmt.Errorf("unsupported size: too big")
 	}
@@ -160,16 +160,16 @@ func UnpaddedSizeToV1TreeHeightAndPadding(dataSize uint64) (uint8, uint64, error
 // - hash type: multihash.SHA2_256_TRUNC254_PADDED_BINARY_TREE
 //
 // The helpers UnpaddedSizeToV1TreeHeight and Fr32PaddedSizeToV1TreeHeight may help in computing tree height
-func DataCommitmentV1ToPieceMhCID(commD []byte, unpaddedDataSize uint64) (cid.Cid, error) {
+func DataCommitmentV1ToPieceMhCID(commD []byte, optionalPayloadSize uint64) (cid.Cid, error) {
 	if len(commD) != 32 {
 		return cid.Undef, fmt.Errorf("commitments must be 32 bytes long")
 	}
 
-	if unpaddedDataSize < 127 {
-		return cid.Undef, fmt.Errorf("unpadded data size must be at least 127, but was %d", unpaddedDataSize)
+	if optionalPayloadSize < 127 {
+		return cid.Undef, fmt.Errorf("unpadded data size must be at least 127, but was %d", optionalPayloadSize)
 	}
 
-	height, padding, err := UnpaddedSizeToV1TreeHeightAndPadding(unpaddedDataSize)
+	height, padding, err := PayloadSizeToV1TreeHeightAndPadding(optionalPayloadSize)
 	if err != nil {
 		return cid.Undef, err
 	}
@@ -301,11 +301,11 @@ func validateFilecoinCidSegments(mc FilMultiCodec, mh FilMultiHash, commX []byte
 	return nil
 }
 
-// ConvertDataCommitmentV1V1CIDtoPieceMhCID takes a v1 piece CID and the CommP tree height and produces a
+// PieceCidV2FromV1 takes a v1 piece CID and the CommP tree height and produces a
 // piece multihash CID
 //
 // The helpers UnpaddedSizeToV1TreeHeight and Fr32PaddedSizeToV1TreeHeight may help in computing tree height
-func ConvertDataCommitmentV1V1CIDtoPieceMhCID(v1PieceCid cid.Cid, unpaddedDataSize uint64) (cid.Cid, error) {
+func PieceCidV2FromV1(v1PieceCid cid.Cid, unpaddedDataSize uint64) (cid.Cid, error) {
 	hashDigest, err := CIDToDataCommitmentV1(v1PieceCid)
 	if err != nil {
 		return cid.Undef, xerrors.Errorf("Error decoding piece CID v1: %w", err)
@@ -314,15 +314,15 @@ func ConvertDataCommitmentV1V1CIDtoPieceMhCID(v1PieceCid cid.Cid, unpaddedDataSi
 	return DataCommitmentV1ToPieceMhCID(hashDigest, unpaddedDataSize)
 }
 
-// ConvertDataCommitmentV1PieceMhCIDToV1CID takes a piece multihash CID and produces a v1 piece CID along with the
+// PieceCidV1FromV2 takes a piece multihash CID and produces a v1 piece CID along with the
 // size of the unpadded data
-func ConvertDataCommitmentV1PieceMhCIDToV1CID(pieceMhCid cid.Cid) (cid.Cid, uint64, error) {
-	digest, unpaddedDataSize, err := PieceMhCIDToDataCommitmentV1(pieceMhCid)
+func PieceCidV1FromV2(pcidV2 cid.Cid) (cid.Cid, uint64, error) {
+	digest, unpaddedDataSize, err := PieceMhCIDToDataCommitmentV1(pcidV2)
 	if err != nil {
 		return cid.Undef, 0, xerrors.Errorf("Error decoding data piece CID v2: %w", err)
 	}
 
-	c, err := DataCommitmentV1ToCID(digest)
+	c, err := DataCommitmentV1ToPieceMhCID(digest, unpaddedDataSize)
 	if err != nil {
 		return cid.Undef, 0, xerrors.Errorf("Could not create piece CID v1: %w", err)
 	}

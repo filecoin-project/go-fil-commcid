@@ -238,7 +238,7 @@ func randomPieceMhInfo(t *testing.T) (treeHeight uint8, paddingSize uint64, data
 	dataSize = dataSize >> 7
 	// minimum dataSize is 127
 	dataSize += 127
-	treeHeight, paddingSize, err = commcid.UnpaddedSizeToV1TreeHeightAndPadding(dataSize)
+	treeHeight, paddingSize, err = commcid.PayloadSizeToV1TreeHeightAndPadding(dataSize)
 	require.NoError(t, err)
 
 	uvarintPaddingSize := varint.ToUvarint(paddingSize)
@@ -343,7 +343,7 @@ func TestTreeHeight(t *testing.T) {
 			})
 			if tc.size >= 127 {
 				t.Run("height-and-padding", func(t *testing.T) {
-					height, padding, err := commcid.UnpaddedSizeToV1TreeHeightAndPadding(tc.size)
+					height, padding, err := commcid.PayloadSizeToV1TreeHeightAndPadding(tc.size)
 					require.NoError(t, err)
 					require.Equal(t, tc.height, height)
 					require.Equal(t, uint64(tc.padding), padding)
@@ -417,7 +417,7 @@ func TestMultihashes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			c, _, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(computedV2Cid)
+			c, _, err := commcid.PieceCidV1FromV2(computedV2Cid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -442,13 +442,13 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 	cidv2 := cid.NewCidV1(cid.Raw, mhv2)
 
 	t.Run("convert v1 piece cid + data size to piece mh cid", func(t *testing.T) {
-		c, err := commcid.ConvertDataCommitmentV1V1CIDtoPieceMhCID(cidv1, expectedDataSize)
+		c, err := commcid.PieceCidV2FromV1(cidv1, expectedDataSize)
 		require.NoError(t, err)
 		require.Equal(t, cidv2, c)
 	})
 
 	t.Run("convert piece mh cid to v1 piece cid + data size", func(t *testing.T) {
-		c, dataSize, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(cidv2)
+		c, dataSize, err := commcid.PieceCidV1FromV2(cidv2)
 		require.NoError(t, err)
 		require.Equal(t, cidv1, c)
 		require.Equal(t, expectedDataSize, dataSize)
@@ -476,7 +476,7 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 			v2Cid, err := cid.Parse(tc.v2CidStr)
 			require.NoError(t, err)
 
-			computedV2Cid, err := commcid.ConvertDataCommitmentV1V1CIDtoPieceMhCID(v1Cid, tc.unpaddedDataSize)
+			computedV2Cid, err := commcid.PieceCidV2FromV1(v1Cid, tc.unpaddedDataSize)
 			require.NoError(t, err)
 
 			require.Equal(t, v2Cid, computedV2Cid)
@@ -489,7 +489,7 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 			v2Cid, err := cid.Parse(tc.v2CidStr)
 			require.NoError(t, err)
 
-			computedV1Cid, computedHeight, err := commcid.ConvertDataCommitmentV1PieceMhCIDToV1CID(v2Cid)
+			computedV1Cid, computedHeight, err := commcid.PieceCidV1FromV2(v2Cid)
 			require.NoError(t, err)
 
 			require.Equal(t, v1Cid, computedV1Cid)
