@@ -322,7 +322,7 @@ func PieceCidV1FromV2(pcidV2 cid.Cid) (cid.Cid, uint64, error) {
 		return cid.Undef, 0, xerrors.Errorf("Error decoding data piece CID v2: %w", err)
 	}
 
-	c, err := DataCommitmentV1ToPieceMhCID(digest, unpaddedDataSize)
+	c, err := DataCommitmentV1ToCID(digest)
 	if err != nil {
 		return cid.Undef, 0, xerrors.Errorf("Could not create piece CID v1: %w", err)
 	}
