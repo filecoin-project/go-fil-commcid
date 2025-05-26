@@ -337,7 +337,7 @@ func TestTreeHeight(t *testing.T) {
 	for name, tc := range noFr32PaddingTests {
 		t.Run(fmt.Sprintf("non-fr32-padding %s", name), func(t *testing.T) {
 			t.Run("height-only", func(t *testing.T) {
-				height, err := unpaddedSizeToV1TreeHeight(tc.size)
+				height, err := payloadsizeToV1TreeHeight(tc.size)
 				require.NoError(t, err)
 				require.Equal(t, tc.height, height)
 			})
