@@ -11,6 +11,7 @@ import (
 	commhash "github.com/filecoin-project/go-fil-commp-hashhash"
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multibase"
+	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
 	"github.com/stretchr/testify/require"
@@ -26,7 +27,7 @@ func TestDataCommitmentToCID(t *testing.T) {
 
 	require.Equal(t, c.Prefix().Codec, uint64(cid.FilCommitmentUnsealed))
 	mh := c.Hash()
-	decoded, err := multihash.Decode([]byte(mh))
+	decoded, err := multihash.Decode(mh)
 	require.NoError(t, err)
 	require.Equal(t, decoded.Code, uint64(multihash.SHA2_256_TRUNC254_PADDED))
 	require.Equal(t, decoded.Length, len(randBytes))
@@ -254,9 +255,9 @@ func TestPieceCommitmentToPieceMhCID(t *testing.T) {
 
 	require.Equal(t, c.Prefix().Codec, uint64(cid.Raw))
 	mh := c.Hash()
-	decoded, err := multihash.Decode([]byte(mh))
+	decoded, err := multihash.Decode(mh)
 	require.NoError(t, err)
-	require.Equal(t, decoded.Code, uint64(FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE))
+	require.Equal(t, decoded.Code, uint64(multicodec.Fr32Sha256Trunc254Padbintree))
 	require.Equal(t, decoded.Length, 1+varint.UvarintSize(paddingSize)+32)
 	require.True(t, decoded.Digest[varint.UvarintSize(paddingSize)] == height)
 
@@ -275,7 +276,7 @@ func TestPieceMhCIDToPieceCommitment(t *testing.T) {
 	treeHeight, paddingSize, expectedDataSize, expectedDigest, mhDigest := randomPieceMhInfo(t)
 
 	t.Run("with correct hash format", func(t *testing.T) {
-		hash := testMultiHash(FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, mhDigest, 0)
+		hash := testMultiHash(uint64(multicodec.Fr32Sha256Trunc254Padbintree), mhDigest, 0)
 
 		t.Run("decodes raw commitment hash when correct cid format", func(t *testing.T) {
 			c := cid.NewCidV1(cid.Raw, hash)
@@ -297,7 +298,7 @@ func TestPieceMhCIDToPieceCommitment(t *testing.T) {
 	})
 
 	t.Run("error on incorrectly formatted hash", func(t *testing.T) {
-		hash := testMultiHash(FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, mhDigest, 5)
+		hash := testMultiHash(uint64(multicodec.Fr32Sha256Trunc254Padbintree), mhDigest, 5)
 		c := cid.NewCidV1(cid.Raw, hash)
 		digest, _, err := PieceCidV2ToDataCommitment(c)
 		require.Error(t, err)
@@ -438,7 +439,7 @@ func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
 	mhv1 := testMultiHash(multihash.SHA2_256_TRUNC254_PADDED, expectedDigest, 0)
 	cidv1 := cid.NewCidV1(cid.FilCommitmentUnsealed, mhv1)
 
-	mhv2 := testMultiHash(FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE, mhDigest, 0)
+	mhv2 := testMultiHash(uint64(multicodec.Fr32Sha256Trunc254Padbintree), mhDigest, 0)
 	cidv2 := cid.NewCidV1(cid.Raw, mhv2)
 
 	t.Run("convert v1 piece cid + data size to piece mh cid", func(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"math/bits"
 
 	"github.com/ipfs/go-cid"
+	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
 	"golang.org/x/xerrors"
@@ -25,8 +26,6 @@ const FILCODEC_UNDEFINED = FilMultiCodec(0)
 // FILMULTIHASH_UNDEFINED is a signifier for "no multihash etermined"
 const FILMULTIHASH_UNDEFINED = FilMultiHash(0)
 
-const FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE = 0x1011
-
 var (
 	// ErrIncorrectCodec means the codec for a CID is a block format that does not match
 	// a commitment hash
@@ -41,7 +40,7 @@ var (
 // - the given filecoin codec type
 // - the given filecoin hash type
 // Deprecated: Use the alternatives like ReplicaCommitmentV1ToCID, DataCommitmentV1ToCID or DataCommitmentV1ToCID
-func CommitmentToCID(mc FilMultiCodec, mh FilMultiHash, commX []byte) (cid.Cid, error) {
+func CommitmentToCID(mc multicodec.Code, mh multicodec.Code, commX []byte) (cid.Cid, error) {
 	if err := validateFilecoinCidSegments(mc, mh, commX); err != nil {
 		return cid.Undef, err
 	}
@@ -63,16 +62,16 @@ func CommitmentToCID(mc FilMultiCodec, mh FilMultiHash, commX []byte) (cid.Cid, 
 // consistent
 //
 // Deprecated: Use the alternatives like CIDToReplicaCommitmentV1, CIDToDataCommitmentV1 or PieceCidV2ToDataCommitment
-func CIDToCommitment(c cid.Cid) (FilMultiCodec, FilMultiHash, []byte, error) {
-	decoded, err := multihash.Decode([]byte(c.Hash()))
+func CIDToCommitment(c cid.Cid) (multicodec.Code, multicodec.Code, []byte, error) {
+	decoded, err := multihash.Decode(c.Hash())
 	if err != nil {
-		return FILCODEC_UNDEFINED, FILMULTIHASH_UNDEFINED, nil, xerrors.Errorf("Error decoding data commitment hash: %w", err)
+		return 0, 0, nil, xerrors.Errorf("Error decoding data commitment hash: %w", err)
 	}
 
-	filCodec := FilMultiCodec(c.Type())
-	filMh := FilMultiHash(decoded.Code)
+	filCodec := multicodec.Code(c.Type())
+	filMh := multicodec.Code(decoded.Code)
 	if err := validateFilecoinCidSegments(filCodec, filMh, decoded.Digest); err != nil {
-		return FILCODEC_UNDEFINED, FILMULTIHASH_UNDEFINED, nil, err
+		return 0, 0, nil, err
 	}
 
 	return filCodec, filMh, decoded.Digest, nil
@@ -85,7 +84,7 @@ func CIDToCommitment(c cid.Cid) (FilMultiCodec, FilMultiHash, []byte, error) {
 //
 // Deprecated: This function should be avoided when possible and DataCommitmentToPieceCidv2 preferred
 func DataCommitmentV1ToCID(commD []byte) (cid.Cid, error) {
-	return CommitmentToCID(cid.FilCommitmentUnsealed, multihash.SHA2_256_TRUNC254_PADDED, commD)
+	return CommitmentToCID(multicodec.FilCommitmentUnsealed, multicodec.Sha2_256Trunc254Padded, commD)
 }
 
 // fr32PaddedSizeToV1TreeHeight calculates the height of the piece tree given data that's been FR32 padded. Because
@@ -174,7 +173,7 @@ func DataCommitmentToPieceCidv2(commD []byte, PayloadSize uint64) (cid.Cid, erro
 		return cid.Undef, fmt.Errorf("padded data size must be less than 2^63-1, but was %d", padding)
 	}
 
-	mh := FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE
+	mh := multicodec.Fr32Sha256Trunc254Padbintree
 	paddingSize := varint.UvarintSize(padding)
 	digestSize := len(commD) + 1 + paddingSize
 
@@ -202,7 +201,7 @@ func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if codec != cid.FilCommitmentUnsealed {
+	if codec != multicodec.FilCommitmentUnsealed {
 		return nil, ErrIncorrectCodec
 	}
 	return commD, nil
@@ -215,7 +214,7 @@ func PieceCidV2ToDataCommitment(c cid.Cid) ([]byte, uint64, error) {
 		return nil, 0, xerrors.Errorf("Error decoding data commitment hash: %w", err)
 	}
 
-	if decoded.Code != FR32_SHA256_TRUNC254_PADDED_BINARY_TREE_CODE {
+	if decoded.Code != uint64(multicodec.Fr32Sha256Trunc254Padbintree) {
 		return nil, 0, ErrIncorrectHash
 	}
 
@@ -263,7 +262,7 @@ func CIDToReplicaCommitmentV1(c cid.Cid) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if codec != cid.FilCommitmentSealed {
+	if codec != multicodec.FilCommitmentSealed {
 		return nil, ErrIncorrectCodec
 	}
 	return commR, nil
@@ -271,15 +270,15 @@ func CIDToReplicaCommitmentV1(c cid.Cid) ([]byte, error) {
 
 // ValidateFilecoinCidSegments returns an error if the provided CID parts
 // conflict with each other.
-func validateFilecoinCidSegments(mc FilMultiCodec, mh FilMultiHash, commX []byte) error {
+func validateFilecoinCidSegments(mc multicodec.Code, mh multicodec.Code, commX []byte) error {
 
 	switch mc {
-	case cid.FilCommitmentUnsealed:
-		if mh != multihash.SHA2_256_TRUNC254_PADDED {
+	case multicodec.FilCommitmentUnsealed:
+		if mh != multicodec.Sha2_256Trunc254Padded {
 			return ErrIncorrectHash
 		}
-	case cid.FilCommitmentSealed:
-		if mh != multihash.POSEIDON_BLS12_381_A1_FC1 {
+	case multicodec.FilCommitmentSealed:
+		if mh != multicodec.PoseidonBls12_381A2Fc1 {
 			return ErrIncorrectHash
 		}
 	default: // neither of the codecs above: we are not in Fil teritory
