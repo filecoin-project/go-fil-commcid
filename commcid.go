@@ -81,8 +81,6 @@ func CIDToCommitment(c cid.Cid) (multicodec.Code, multicodec.Code, []byte, error
 // by adding:
 // - codec: cid.FilCommitmentUnsealed
 // - hash type: multihash.SHA2_256_TRUNC254_PADDED
-//
-// Deprecated: This function should be avoided when possible and DataCommitmentToPieceCidv2 preferred
 func DataCommitmentV1ToCID(commD []byte) (cid.Cid, error) {
 	return CommitmentToCID(multicodec.FilCommitmentUnsealed, multicodec.Sha2_256Trunc254Padded, commD)
 }
@@ -194,8 +192,6 @@ func DataCommitmentToPieceCidv2(commD []byte, PayloadSize uint64) (cid.Cid, erro
 
 // CIDToDataCommitmentV1 extracts the raw data commitment from a CID
 // after checking for the correct codec and hash types.
-//
-// Deprecated: This function should be avoided when possible and PieceCidV2ToDataCommitment preferred
 func CIDToDataCommitmentV1(c cid.Cid) ([]byte, error) {
 	codec, _, commD, err := CIDToCommitment(c)
 	if err != nil {
@@ -322,13 +318,9 @@ func PieceCidV1FromV2(pcidV2 cid.Cid) (cid.Cid, uint64, error) {
 // PieceCommitmentV1ToCID converts a commP to a CID
 // -- it is just a helper function that is equivalent to
 // DataCommitmentV1ToCID.
-//
-// Deprecated: This function should be avoided when possible and DataCommitmentToPieceCidv2 preferred
 var PieceCommitmentV1ToCID = DataCommitmentV1ToCID
 
 // CIDToPieceCommitmentV1 converts a CID to a commP
 // -- it is just a helper function that is equivalent to
 // CIDToDataCommitmentV1.
-//
-// Deprecated: This function should be avoided when possible and PieceCidV2ToDataCommitment preferred
 var CIDToPieceCommitmentV1 = CIDToDataCommitmentV1
