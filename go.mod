@@ -3,7 +3,7 @@ module github.com/filecoin-project/go-fil-commcid
 go 1.24
 
 require (
-	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0
+	github.com/filecoin-project/go-fil-commp-hashhash v0.3.0
 	github.com/ipfs/go-cid v0.6.0
 	github.com/multiformats/go-multibase v0.2.0
 	github.com/multiformats/go-multicodec v0.10.0
