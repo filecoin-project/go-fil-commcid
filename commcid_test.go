@@ -237,8 +237,6 @@ func randomPieceMhInfo(t *testing.T) (treeHeight uint8, paddingSize uint64, data
 	dataSize = dataSize >> 2
 	// TODO: at the moment some of the code here requires max size to be 128 times lower
 	dataSize = dataSize >> 7
-	// minimum dataSize is 127
-	dataSize += 127
 	treeHeight, paddingSize, err = PayloadSizeToV1TreeHeightAndPadding(dataSize)
 	require.NoError(t, err)
 
@@ -324,10 +322,10 @@ func TestTreeHeight(t *testing.T) {
 	}{
 		"127OfEach0-1-2-3":          {127 * 4, 4, 0},
 		"512-bytes-should-pad-over": {512, 5, 504},
-		"0":                         {0, 0, -1},
-		"1":                         {1, 0, -1},
-		"31":                        {31, 0, -1},
-		"32":                        {32, 1, -1},
+		"0":                         {0, 2, 127},
+		"1":                         {1, 2, 126},
+		"31":                        {31, 2, 96},
+		"32":                        {32, 2, 95},
 		"127":                       {127, 2, 0},
 		"32GiB":                     {32 << 30, 31, 33822867456},
 		"32GiB-post-padding":        {(32 << 30) * 127 / 128, 30, 0},
@@ -342,14 +340,12 @@ func TestTreeHeight(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tc.height, height)
 			})
-			if tc.size >= 127 {
-				t.Run("height-and-padding", func(t *testing.T) {
-					height, padding, err := PayloadSizeToV1TreeHeightAndPadding(tc.size)
-					require.NoError(t, err)
-					require.Equal(t, tc.height, height)
-					require.Equal(t, uint64(tc.padding), padding)
-				})
-			}
+			t.Run("height-and-padding", func(t *testing.T) {
+				height, padding, err := PayloadSizeToV1TreeHeightAndPadding(tc.size)
+				require.NoError(t, err)
+				require.Equal(t, tc.height, height)
+				require.Equal(t, uint64(tc.padding), padding)
+			})
 		})
 	}
 
@@ -360,10 +356,10 @@ func TestTreeHeight(t *testing.T) {
 	}{
 		"127OfEach0-1-2-3":              {127 * 4, 4},
 		"512-bytes-should-not-pad-over": {512, 4},
-		"0":                             {0, 0},
-		"1":                             {1, 0},
-		"31":                            {31, 0},
-		"32":                            {32, 0},
+		"0":                             {0, 2},
+		"1":                             {1, 2},
+		"31":                            {31, 2},
+		"32":                            {32, 2},
 		"127":                           {127, 2},
 		"128":                           {128, 2},
 		"129":                           {129, 3},
@@ -386,6 +382,12 @@ func TestMultihashes(t *testing.T) {
 		data     []byte
 		v2CidStr string
 	}{
+		"Empty":                         {[]byte{}, "bafkzcibcp4bdomn3tgwgrh3g532zopskstnbrd2n3sxfqbze7rxt7vqn7veigmy"},
+		"1Of1":                          {bytes.Repeat([]byte{0x01}, 1), "bafkzcibcpyba3vw24qoc65kvaeuvst5witskqqwpv6zrniwvsmq6hch6qsq6yly"},
+		"64Of1":                         {bytes.Repeat([]byte{0x01}, 64), "bafkzcibch4beda6pru25m2g5kbvsnsj3za7le45vcauwicz2wsmjs43q3dajkpy"},
+		"65Of1":                         {bytes.Repeat([]byte{0x01}, 65), "bafkzcibchybkmpf2ifpzvzxjq4hxunlb6hsgyy4tladusdjlvykymhwpdifkkny"},
+		"127Of0":                        {bytes.Repeat([]byte{0x00}, 127), "bafkzcibcaabdomn3tgwgrh3g532zopskstnbrd2n3sxfqbze7rxt7vqn7veigmy"},
+		"128Of0":                        {bytes.Repeat([]byte{0x00}, 128), "bafkzcibcpybwiktap34inmaex4wbs6cghlq5i2j2yd2bb2zndn5ep7ralzphkdy"},
 		"127OfEach0-1-2-3":              {data127EachOf0_1_2_3, "bafkzcibcaaces3nobte6ezpp4wqan2age2s5yxcatzotcvobhgcmv5wi2xh5mbi"},
 		"127OfEach0-1-2-3-Then127*4-0s": {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 127*4)...), "bafkzcibcaac542av3szurbbscwuu3zjssvfwbpsvbjf6y3tukvlgl2nf5rha6pa"},
 		"127OfEach0-1-2-3-Then4-0s":     {append(data127EachOf0_1_2_3[:], bytes.Repeat([]byte{0x00}, 4)...), "bafkzcibd7abqlxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4"},
@@ -401,6 +403,11 @@ func TestMultihashes(t *testing.T) {
 			_, err = h.Write(tc.data)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if n := int(commhash.MinPiecePayload) - len(tc.data); n > 0 {
+				// Zero padding within the smallest tree leaves the commitment unchanged
+				_, err = h.Write(make([]byte, n))
+				require.NoError(t, err)
 			}
 			digest, paddedSize, err := h.Digest()
 			if err != nil {
@@ -431,6 +438,52 @@ func TestMultihashes(t *testing.T) {
 		})
 	}
 
+}
+
+func TestPieceMhCIDValidity(t *testing.T) {
+	root := make([]byte, 32)
+	tests := map[string]struct {
+		padding uint64
+		height  uint8
+		size    uint64
+		err     string
+	}{
+		"height-1":                {0, 1, 0, "piece CID describes a 64 byte piece, below the 128 byte minimum"},
+		"height-2-empty":          {127, 2, 0, ""},
+		"height-2-over-capacity":  {128, 2, 0, "piece CID pads 128 bytes, more than the 127 bytes of data a 128 byte piece holds"},
+		"height-3-more-than-half": {126, 3, 128, ""},
+		"height-3-half":           {127, 3, 0, "piece CID places 127 bytes of data in a 256 byte piece, but data must use the smallest piece that holds it"},
+		"height-58":               {0, 58, 127 << 56, ""},
+		"height-59":               {0, 59, 0, "piece CID describes a 2^64 byte piece, above the 2^63 byte maximum"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			digest := append(varint.ToUvarint(tc.padding), tc.height)
+			digest = append(digest, root...)
+			c := cid.NewCidV1(cid.Raw, testMultiHash(uint64(multicodec.Fr32Sha256Trunc254Padbintree), digest, 0))
+			_, size, err := PieceCidV2ToDataCommitment(c)
+			if tc.err != "" {
+				require.EqualError(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.size, size)
+		})
+	}
+
+	// FRC-0069 invalid test vectors
+	for _, s := range []string{
+		"bafkzcibd7qbqlxticxolgseegik2stpfgkkuwyf6kufex3doorkvmzpjuxwe4dz4", // 508 bytes at height 5, minimal height is 4
+		"bafkzcibcaaa7ljp5iliwuibqe6mo63wtbglzwqyahursbwpq5dvjqmnje5m7wcy",  // height 1
+	} {
+		t.Run(s, func(t *testing.T) {
+			c, err := cid.Parse(s)
+			require.NoError(t, err)
+			_, _, err = PieceCidV2ToDataCommitment(c)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestPieceMhCIDandV1CIDPieceCommitmentConverters(t *testing.T) {
